@@ -57,7 +57,7 @@ async def download(
             )
             await asyncio.sleep(random.randint(1, 3))
             await download(
-                url, i, total_images, session, c, comic_title, chapter_title, total_chapters
+                url, i, total_images, session, c, comic_title, chapter_title, total_chapters, semaphore
             )
 
 
