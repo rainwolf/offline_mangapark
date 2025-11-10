@@ -35,34 +35,35 @@ def get_user_agent_and_cookies(url="https://mangapark.org"):
 async def download(
     url, i, total_images, session, c, comic_title, chapter_title, total_chapters, semaphore
 ):
-    print(
-        f"Chapter: {c} of {total_chapters}: Downloading image {i} of {total_images}..."
-    )
-    async with semaphore:
-        try:
-            async with session.get(url, headers=headers) as response:
-                file = await response.read()
-                ext = url[-5:]
-                if ext[0] != ".":
-                    ext = ext[1:]
-                # filename = url.split("/")[-1]
-                with open(
-                    f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}{ext}",
-                    "wb",
-                ) as f:
-                    f.write(file)
-        except Exception as e:
+    try:
+        await asyncio.sleep(random.uniform(0.2, 2.5))
+        async with semaphore, session.get(url, headers=headers) as response:
+            file = await response.read()
+            ext = url[-5:]
+            if ext[0] != ".":
+                ext = ext[1:]
+            # filename = url.split("/")[-1]
+            with open(
+                f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}{ext}",
+                "wb",
+            ) as f:
+                f.write(file)
             print(
-                f"Error downloading image {i} of {total_images} in chapter {c} of {total_chapters}: {e}, retrying..."
+                f"Chapter: {c} of {total_chapters}: Finished downloading image {i} of {total_images}..."
             )
-            await asyncio.sleep(random.randint(1, 3))
-            await download(
-                url, i, total_images, session, c, comic_title, chapter_title, total_chapters, semaphore
-            )
+    except Exception as e:
+        print(
+            f"Error downloading image {i} of {total_images} in chapter {c} of {total_chapters}: {e}, retrying..."
+        )
+        await asyncio.sleep(random.randint(1, 3))
+        await download(
+            url, i, total_images, session, c, comic_title, chapter_title, total_chapters, semaphore
+        )
 
 
-async def download_chapter(chapter_url, c, comic_title, total_chapters, user_agent, cookies):
-    chapter_page_source = requests.get(chapter_url, headers={"User-Agent": user_agent}, cookies=cookies).text
+async def download_chapter(chapter_url, c, comic_title, total_chapters, user_agent, cookies, session, semaphore):
+    async with session.get(chapter_url, headers={"User-Agent": user_agent}, cookies=cookies) as response:
+        chapter_page_source = await response.text()
     soup = bs4.BeautifulSoup(chapter_page_source, "html.parser")
     chapter_title = soup.find("title").text.replace(
         " - Share Any Manga on MangaPark", ""
@@ -76,27 +77,25 @@ async def download_chapter(chapter_url, c, comic_title, total_chapters, user_age
         return [x for x in seq if not (x in seen or seen_add(x))]
 
     image_urls = f7(image_urls)
-    semaphore = asyncio.Semaphore(10)
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        i = 0
-        total = len(image_urls)
-        for img_url in image_urls:
-            i += 1
-            tasks.append(
-                download(
-                    img_url,
-                    i,
-                    total,
-                    session,
-                    c,
-                    comic_title,
-                    chapter_title,
-                    total_chapters,
-                    semaphore,
-                )
+    tasks = []
+    i = 0
+    total = len(image_urls)
+    for img_url in image_urls:
+        i += 1
+        tasks.append(
+            download(
+                img_url,
+                i,
+                total,
+                session,
+                c,
+                comic_title,
+                chapter_title,
+                total_chapters,
+                semaphore,
             )
-        await asyncio.gather(*tasks)
+        )
+    await asyncio.gather(*tasks)
 
 
 async def main():
@@ -106,7 +105,7 @@ async def main():
         clipboard, headers={"User-Agent": user_agent}, cookies=cookies
     ).text
     print(f"Fetching comic information from {clipboard}...")
-    print(f"{comic_source=}")
+    # print(f"{comic_source=}")
     soup = bs4.BeautifulSoup(comic_source, "html.parser")
     comic_title = soup.find("title").text.replace(" - Share Any Manga on MangaPark", "")
     # make folder with title
@@ -120,23 +119,26 @@ async def main():
     chapter_urls = [site_url + suffix for suffix in chapter_suffixes]
     print(f"Found {len(chapter_urls)} chapters to download.")
 
-    async with aiohttp.ClientSession() as session:
+    semaphore = asyncio.BoundedSemaphore(10)
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=10)) as session:
         tasks = []
         i = 0
         total_chapters = len(chapter_urls)
         for chapter_url in chapter_urls:
             i += 1
-            tasks.append(download_chapter(chapter_url, i, comic_title, total_chapters, user_agent, cookies))
+            tasks.append(download_chapter(chapter_url, i, comic_title, total_chapters, user_agent, cookies, session, semaphore))
         await asyncio.gather(*tasks)
     print(f"Finished downloading {comic_title}.")
 
-container = None
-try:
-    client = docker.DockerClient(base_url='unix://var/run/docker.sock')
-    client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
-    container = client.containers.run("frederikuni/docker-cloudflare-bypasser:latest", detach=True, ports={'8000/tcp': 8000})
-    with asyncio.Runner() as runner:
-        runner.run(main())
-finally:
-    container.stop()
-    container.remove()
+
+if __name__ == "__main__":
+    container = None
+    try:
+        client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+        client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
+        container = client.containers.run("frederikuni/docker-cloudflare-bypasser:latest", detach=True, ports={'8000/tcp': 8000})
+        with asyncio.Runner() as runner:
+            runner.run(main())
+    finally:
+        container.stop()
+        container.remove()
