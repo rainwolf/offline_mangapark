@@ -6,6 +6,7 @@ import bs4
 import re
 import requests
 import os
+import glob
 from pandas.io.clipboard import clipboard_get
 from time import sleep
 from random import randint
@@ -16,9 +17,12 @@ clipboard = clipboard_get()
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
 }
+limit = 5
 
 
-def get_user_agent_and_cookies(url: str = "https://mangapark.org") -> tuple[str, dict]:
+def get_user_agent_and_cookies(url: str = "https://mangapark.org", tries: int = 3) -> tuple[str, dict]:
+    if tries <= 0:
+        return None, None
     try:
         with requests.Session() as session:
             response = session.post(
@@ -30,9 +34,9 @@ def get_user_agent_and_cookies(url: str = "https://mangapark.org") -> tuple[str,
             print(response_json)
             return response_json["user_agent"], response_json["cookies"]
     except Exception as e:
-        print(f"{url}\nError getting user agent and cookies: {e}")
+        print(f"{url}\nError getting user agent and cookies on try {tries}: {e}")
         sleep(randint(1, 3))
-        return get_user_agent_and_cookies(url=url)
+        return get_user_agent_and_cookies(url=url, tries=tries - 1)
 
 
 async def download(
@@ -46,6 +50,13 @@ async def download(
     total_chapters: int,
     semaphore: asyncio.Semaphore,
 ):
+    file_path = f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}"
+    file_list = glob.glob(f"{file_path}.*")
+    if file_list and len(file_list) > 0 and os.path.getsize(file_list[0]) > 8000:
+        print(
+            f"Chapter: {c} of {total_chapters}: Image {i} of {total_images} already exists, skipping download..."
+        )
+        return
     try:
         await asyncio.sleep(random.uniform(0.2, 2.5))
         async with semaphore, session.get(url, headers=headers) as response:
@@ -53,9 +64,9 @@ async def download(
             ext = url[-5:]
             if ext[0] != ".":
                 ext = ext[1:]
-            # filename = url.split("/")[-1]
+            file_path = f"{file_path}{ext}"
             with open(
-                f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}{ext}",
+                file_path,
                 "wb",
             ) as f:
                 f.write(file)
@@ -131,9 +142,14 @@ async def download_chapter(
 async def main():
     site_url = "https://mangapark.org"
     user_agent, cookies = get_user_agent_and_cookies(url=clipboard)
-    comic_source = requests.get(
-        clipboard, headers={"User-Agent": user_agent}, cookies=cookies
-    ).text
+    if not user_agent or not cookies:
+        cookies = {"nsfw": "2"}
+        user_agent = headers["User-Agent"]
+        comic_source = requests.get(clipboard, headers=headers, cookies=cookies).text
+    else:
+        comic_source = requests.get(
+            clipboard, headers={"User-Agent": user_agent}, cookies=cookies
+        ).text
     print(f"Fetching comic information from {clipboard}...")
     # print(f"{comic_source=}")
     soup = bs4.BeautifulSoup(comic_source, "html.parser")
@@ -149,9 +165,9 @@ async def main():
     chapter_urls = [site_url + suffix for suffix in chapter_suffixes]
     print(f"Found {len(chapter_urls)} chapters to download.")
 
-    semaphore = asyncio.BoundedSemaphore(10)
+    semaphore = asyncio.BoundedSemaphore(limit)
     async with aiohttp.ClientSession(
-        connector=aiohttp.TCPConnector(limit=10)
+        connector=aiohttp.TCPConnector(limit=limit)
     ) as session:
         tasks = []
         i = 0
