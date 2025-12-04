@@ -14,15 +14,14 @@ from random import randint
 
 # get content from clipboard
 clipboard = clipboard_get()
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
-}
 limit = 5
 
 
-def get_user_agent_and_cookies(url: str = "https://mangapark.org", tries: int = 3) -> tuple[str, dict]:
+def get_user_agent_and_cookies(
+    url: str = "https://mangapark.org", tries: int = 3
+) -> tuple[str | None, dict]:
     if tries <= 0:
-        return None, None
+        return None, {}
     try:
         with requests.Session() as session:
             response = session.post(
@@ -49,6 +48,8 @@ async def download(
     chapter_title: str,
     total_chapters: int,
     semaphore: asyncio.Semaphore,
+    cookies: dict,
+    headers: dict,
 ):
     file_path = f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}"
     file_list = glob.glob(f"{file_path}.*")
@@ -59,7 +60,10 @@ async def download(
         return
     try:
         await asyncio.sleep(random.uniform(0.2, 2.5))
-        async with semaphore, session.get(url, headers=headers) as response:
+        async with (
+            semaphore,
+            session.get(url, headers=headers, cookies=cookies) as response,
+        ):
             file = await response.read()
             ext = url[-5:]
             if ext[0] != ".":
@@ -88,6 +92,8 @@ async def download(
             chapter_title,
             total_chapters,
             semaphore,
+            cookies,
+            headers,
         )
 
 
@@ -96,14 +102,12 @@ async def download_chapter(
     c: int,
     comic_title: str,
     total_chapters: int,
-    user_agent: str,
+    headers: dict,
     cookies: dict,
     session: aiohttp.ClientSession,
     semaphore: asyncio.Semaphore,
 ):
-    async with session.get(
-        chapter_url, headers={"User-Agent": user_agent}, cookies=cookies
-    ) as response:
+    async with session.get(chapter_url, headers=headers, cookies=cookies) as response:
         chapter_page_source = await response.text()
     soup = bs4.BeautifulSoup(chapter_page_source, "html.parser")
     chapter_title = soup.find("title").text.replace(
@@ -134,6 +138,8 @@ async def download_chapter(
                 chapter_title,
                 total_chapters,
                 semaphore,
+                cookies,
+                headers,
             )
         )
     await asyncio.gather(*tasks)
@@ -141,15 +147,16 @@ async def download_chapter(
 
 async def main():
     site_url = "https://mangapark.org"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
+    }
     user_agent, cookies = get_user_agent_and_cookies(url=clipboard)
-    if not user_agent or not cookies:
-        cookies = {"nsfw": "2"}
-        user_agent = headers["User-Agent"]
+    cookies.update({"nsfw": "2"})
+    if user_agent is None:
         comic_source = requests.get(clipboard, headers=headers, cookies=cookies).text
     else:
-        comic_source = requests.get(
-            clipboard, headers={"User-Agent": user_agent}, cookies=cookies
-        ).text
+        headers = {"User-Agent": user_agent}
+        comic_source = requests.get(clipboard, headers=headers, cookies=cookies).text
     print(f"Fetching comic information from {clipboard}...")
     # print(f"{comic_source=}")
     soup = bs4.BeautifulSoup(comic_source, "html.parser")
@@ -180,7 +187,7 @@ async def main():
                     i,
                     comic_title,
                     total_chapters,
-                    user_agent,
+                    headers,
                     cookies,
                     session,
                     semaphore,
