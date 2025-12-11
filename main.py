@@ -1,7 +1,7 @@
 import asyncio
 import random
 import aiohttp
-import docker
+import podman
 import bs4
 import re
 import requests
@@ -50,7 +50,19 @@ async def download(
     semaphore: asyncio.Semaphore,
     cookies: dict,
     headers: dict,
+    retry_count: int = 0,
 ):
+    if retry_count > 10:
+        print(
+            f"Failed to download image {i} of {total_images} in chapter {c} of {total_chapters} after multiple retries."
+        )
+        return
+    elif retry_count > 0:
+        prefixes = [f'https://s{n:02}' for n in range(1, 11)]
+        if any(url.startswith(prefix) for prefix in prefixes):
+            prefix = f'https://s{retry_count:02}'
+            url = f'{prefix}{url[len(prefix):]}'
+
     file_path = f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}"
     file_list = glob.glob(f"{file_path}.*")
     if file_list and len(file_list) > 0 and os.path.getsize(file_list[0]) > 8000:
@@ -65,6 +77,8 @@ async def download(
             session.get(url, headers=headers, cookies=cookies) as response,
         ):
             file = await response.read()
+            if len(file) < 8000:
+                raise Exception(f"File size too small, retrying... {retry_count=}")
             ext = url[-5:]
             if ext[0] != ".":
                 ext = ext[1:]
@@ -94,6 +108,7 @@ async def download(
             semaphore,
             cookies,
             headers,
+            retry_count=retry_count + 1,
         )
 
 
@@ -198,17 +213,19 @@ async def main():
 
 
 if __name__ == "__main__":
-    container = None
-    try:
-        client = docker.DockerClient(base_url="unix://var/run/docker.sock")
-        client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
-        container = client.containers.run(
-            "frederikuni/docker-cloudflare-bypasser:latest",
-            detach=True,
-            ports={"8000/tcp": 8000},
-        )
-        with asyncio.Runner() as runner:
-            runner.run(main())
-    finally:
-        container.stop()
-        container.remove()
+    with asyncio.Runner() as runner:
+        runner.run(main())
+    # container = None
+    # try:
+    #     client = podman.PodmanClient.from_env()
+    #     client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
+    #     container = client.containers.run(
+    #         "frederikuni/docker-cloudflare-bypasser:latest",
+    #         detach=True,
+    #         ports={"8000/tcp": 8000},
+    #     )
+    #     with asyncio.Runner() as runner:
+    #         runner.run(main())
+    # finally:
+    #     container.stop()
+    #     container.remove()

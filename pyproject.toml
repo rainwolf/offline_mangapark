@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.13.0",
     "bs4>=0.0.2",
-    "docker>=7.1.0",
     "pandas>=2.3.3",
+    "podman>=5.6.0",
     "requests>=2.32.5",
 ]
