@@ -1,7 +1,7 @@
 import asyncio
 import random
 import aiohttp
-import podman
+import docker
 import bs4
 import re
 import requests
@@ -27,7 +27,7 @@ def get_user_agent_and_cookies(
             response = session.post(
                 "http://localhost:8000/bypass-cloudflare",
                 headers={"Content-Type": "application/json"},
-                data=f'{{"url": "{url}"}}',
+                json={"url": f"{url}"},
             )
             response_json = response.json()
             print(response_json)
@@ -215,17 +215,18 @@ async def main():
 if __name__ == "__main__":
     with asyncio.Runner() as runner:
         runner.run(main())
-    # container = None
-    # try:
-    #     client = podman.PodmanClient.from_env()
-    #     client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
-    #     container = client.containers.run(
-    #         "frederikuni/docker-cloudflare-bypasser:latest",
-    #         detach=True,
-    #         ports={"8000/tcp": 8000},
-    #     )
-    #     with asyncio.Runner() as runner:
-    #         runner.run(main())
-    # finally:
-    #     container.stop()
-    #     container.remove()
+    exit(0)
+    container = None
+    try:
+        client = docker.DockerClient(base_url="unix://Users/waliedothman/Library/Containers/com.docker.docker/Data/docker.raw.sock")
+        client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
+        container = client.containers.run(
+            "frederikuni/docker-cloudflare-bypasser:latest",
+            detach=True,
+            ports={"8000/tcp": 8000},
+        )
+        with asyncio.Runner() as runner:
+            runner.run(main())
+    finally:
+        container.stop()
+        container.remove()
