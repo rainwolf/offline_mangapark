@@ -10,8 +10,10 @@ import glob
 from pandas.io.clipboard import clipboard_get
 from time import sleep
 from random import randint
+from urllib.parse import urlsplit
 
 
+BASE_URL = "https://mangapark.org"
 # get content from clipboard
 clipboard = clipboard_get()
 limit = 5
@@ -52,16 +54,19 @@ async def download(
     headers: dict,
     retry_count: int = 0,
 ):
-    if retry_count > 10:
+    # if retry_count > 10:
+    if retry_count > 1:
         print(
             f"Failed to download image {i} of {total_images} in chapter {c} of {total_chapters} after multiple retries."
         )
         return
     elif retry_count > 0:
-        prefixes = [f'https://s{n:02}' for n in range(1, 11)]
-        if any(url.startswith(prefix) for prefix in prefixes):
-            prefix = f'https://s{retry_count:02}'
-            url = f'{prefix}{url[len(prefix):]}'
+        # prefixes = [f'https://s{n:02}' for n in range(1, 11)]
+        # if any(url.startswith(prefix) for prefix in prefixes):
+        #     prefix = f'https://s{retry_count:02}'
+        #     url = f'{prefix}{url[len(prefix):]}'
+        path = urlsplit(url).path
+        url = f"{BASE_URL}{path}"
 
     file_path = f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}"
     file_list = glob.glob(f"{file_path}.*")
@@ -161,7 +166,6 @@ async def download_chapter(
 
 
 async def main():
-    site_url = "https://mangapark.org"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
     }
@@ -184,7 +188,7 @@ async def main():
     chapters_pattern = re.compile(rf"{comic_prefix}/\d+[^\"]+")
     chapter_suffixes = re.findall(chapters_pattern, comic_source)
     chapter_suffixes = sorted(list(set(chapter_suffixes)))
-    chapter_urls = [site_url + suffix for suffix in chapter_suffixes]
+    chapter_urls = [BASE_URL + suffix for suffix in chapter_suffixes]
     print(f"Found {len(chapter_urls)} chapters to download.")
 
     semaphore = asyncio.BoundedSemaphore(limit)
@@ -209,7 +213,11 @@ async def main():
                 )
             )
         await asyncio.gather(*tasks)
-    print(f"Finished downloading {comic_title}.")
+    if len(os.listdir(f"../{comic_title}")) == 0:
+        os.rmdir(f"../{comic_title}")
+        print(f"No chapters were downloaded for {comic_title}, folder removed.")
+    else:
+        print(f"Finished downloading {comic_title}.")
 
 
 if __name__ == "__main__":
