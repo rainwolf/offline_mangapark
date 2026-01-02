@@ -69,6 +69,8 @@ async def download(
         url = f"{BASE_URL}{path}"
 
     file_path = f"../{comic_title}/{c:05} {comic_title} - {chapter_title} - {i:05}"
+    if len(file_path) > 250:
+        file_path = f"../{comic_title}/{c:05} - {chapter_title} - {i:05}"
     file_list = glob.glob(f"{file_path}.*")
     if file_list and len(file_list) > 0 and os.path.getsize(file_list[0]) > 8000:
         print(
