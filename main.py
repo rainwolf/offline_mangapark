@@ -228,7 +228,9 @@ if __name__ == "__main__":
     exit(0)
     container = None
     try:
-        client = docker.DockerClient(base_url="unix://Users/waliedothman/Library/Containers/com.docker.docker/Data/docker.raw.sock")
+        client = docker.DockerClient(
+            base_url="unix://Users/waliedothman/Library/Containers/com.docker.docker/Data/docker.raw.sock"
+        )
         client.images.pull("frederikuni/docker-cloudflare-bypasser:latest")
         container = client.containers.run(
             "frederikuni/docker-cloudflare-bypasser:latest",
